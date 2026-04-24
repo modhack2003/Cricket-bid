@@ -157,7 +157,7 @@ export default function TeamsClient() {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(500px, 1fr))", gap: "2rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "2rem" }}>
           {Object.values(teams).map((team) => {
             const pct = Math.round((team.spent / team.budget) * 100);
             return (

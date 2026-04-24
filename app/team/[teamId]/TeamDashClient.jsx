@@ -108,7 +108,7 @@ export default function TeamDashClient({ teamId }) {
       </div>
 
       <div className="container" style={{ padding: "2rem 1.5rem" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "2rem", alignItems: "start" }}>
+        <div className="layout-main-sidebar">
 
           {/* Live Auction */}
           <div>

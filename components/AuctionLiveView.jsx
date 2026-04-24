@@ -139,7 +139,7 @@ export default function AuctionLiveView({ onBid, canBid = false, myTeamId = null
 
       {/* Team Scorecards */}
       {teams && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1rem" }}>
           {Object.values(teams).map((team) => {
             const remaining = team.budget - team.spent;
             const pct = Math.round((team.spent / team.budget) * 100);
@@ -220,7 +220,7 @@ function BidButtons({ currentBid, currentBidder, myTeamId, teamBudget, onBid }) 
         {isMyleading && <span className="badge badge-gold">You're Leading!</span>}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.5rem", marginBottom: "1rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(65px, 1fr))", gap: "0.5rem", marginBottom: "1rem" }}>
         {increments.map((inc) => {
           const newBid = currentBid + inc.value;
           const canAfford = newBid <= teamBudget;

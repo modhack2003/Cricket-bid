@@ -119,14 +119,12 @@ export default function AuctionControlClient() {
     <>
       <Navbar role="admin" />
       <ToastContainer toasts={toasts} />
-      <div style={{ display: "flex", minHeight: "calc(100vh - 57px)" }}>
+      <div className="admin-layout">
         {/* Left Panel - Controls */}
-        <div style={{
-          width: 340, flexShrink: 0,
+        <div className="sidebar auction-sidebar" style={{
+          flexShrink: 0,
           background: "var(--bg-secondary)",
-          borderRight: "1px solid var(--border)",
           padding: "1.5rem",
-          overflowY: "auto",
           display: "flex",
           flexDirection: "column",
           gap: "1.25rem",
@@ -251,7 +249,7 @@ export default function AuctionControlClient() {
                   <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>Leave all unselected to allow any role</div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.5rem" }}>
                   <div>
                     <label>Min Base (₹)</label>
                     <input type="number" className="input" value={conditions.minBasePrice} step={50000}
@@ -349,7 +347,7 @@ export default function AuctionControlClient() {
         </div>
 
         {/* Right Panel - Live View */}
-        <div style={{ flex: 1, padding: "1.5rem", overflowY: "auto" }}>
+        <div className="main-content">
           <h3 style={{ marginBottom: "1.5rem", color: "var(--text-secondary)", fontFamily: "Inter", fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>
             Live Auction Preview
           </h3>

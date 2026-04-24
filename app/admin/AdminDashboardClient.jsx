@@ -132,7 +132,7 @@ export default function AdminDashboardClient() {
         <h2 style={{ marginBottom: "1rem", fontSize: "1.1rem", color: "var(--text-secondary)", fontFamily: "Inter" }}>
           Team Summary
         </h2>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "2rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem", marginBottom: "2rem" }}>
           {[vipers, mongooses].filter(Boolean).map((team) => {
             const pct = Math.round((team.spent / team.budget) * 100);
             return (
