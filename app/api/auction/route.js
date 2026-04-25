@@ -24,15 +24,20 @@ export async function POST(request) {
   const getNextPlayerWithRecycle = async (cond) => {
     let player = pickRandomPlayer(players, cond);
     if (!player) {
-      let recycled = false;
-      players.forEach(p => {
-        if (p.status === "skipped" || p.status === "unsold") {
-          p.status = "pending";
-          recycled = true;
-        }
-      });
+      // Immutable recycle: map returns a new array, no direct mutation
+      const recycled = players.some(
+        (p) => p.status === "skipped" || p.status === "unsold"
+      );
       if (recycled) {
-        await savePlayers(players);
+        const recycledPlayers = players.map((p) =>
+          p.status === "skipped" || p.status === "unsold"
+            ? { ...p, status: "pending" }
+            : p
+        );
+        await savePlayers(recycledPlayers);
+        // Update local reference for the subsequent pick
+        players.length = 0;
+        recycledPlayers.forEach((p) => players.push(p));
         player = pickRandomPlayer(players, cond);
       }
     }
@@ -102,11 +107,14 @@ export async function POST(request) {
     );
     await savePlayers(updatedPlayers);
 
-    // Update team
+    // Update team — immutable spread to prevent reference mutation
     const teams = await getTeams();
     if (teams[teamId]) {
-      teams[teamId].players.push({ ...state.currentPlayer, soldFor: price });
-      teams[teamId].spent += price;
+      teams[teamId] = {
+        ...teams[teamId],
+        players: [...teams[teamId].players, { ...state.currentPlayer, soldFor: price }],
+        spent: teams[teamId].spent + price,
+      };
     }
     await saveTeams(teams);
 
