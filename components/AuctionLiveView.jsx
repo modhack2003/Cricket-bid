@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 
 const roleIcons = { Batsman: "🏏", Bowler: "🎯", "All-rounder": "⭐", Wicketkeeper: "🧤" };
 
@@ -22,26 +22,41 @@ export default function AuctionLiveView({ onBid, canBid = false, myTeamId = null
   const prevBidRef = useRef(null);
 
   useEffect(() => {
-    const es = new EventSource("/api/auction/stream");
-    es.onmessage = (e) => {
-      try {
-        const d = JSON.parse(e.data);
-        setData(d);
+    let es = null;
+    let reconnectTimeout = null;
+    let retryDelay = 1000;
 
-        // Detect new bid
-        if (prevBidRef.current !== d.state?.currentBid) {
-          prevBidRef.current = d.state?.currentBid;
-          setBidKey((k) => k + 1);
-        }
+    const connect = () => {
+      es = new EventSource("/api/auction/stream");
+      es.onmessage = (e) => {
+        retryDelay = 1000;
+        try {
+          const d = JSON.parse(e.data);
+          setData(d);
 
-        if (prevBidRef.current !== d.state?.currentBid) {
-          prevBidRef.current = d.state?.currentBid;
-          setBidKey((k) => k + 1);
+          // Detect new bid
+          if (prevBidRef.current !== d.state?.currentBid) {
+            prevBidRef.current = d.state?.currentBid;
+            setBidKey((k) => k + 1);
+          }
+        } catch (err) {
+          console.error("Failed to parse live auction data:", err);
         }
-      } catch {}
+      };
+      es.onerror = (err) => {
+        console.error("Live auction stream error. Reconnecting in", retryDelay, "ms...", err);
+        es.close();
+        reconnectTimeout = setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, 30000);
+      };
     };
-    es.onerror = () => es.close();
-    return () => es.close();
+
+    connect();
+
+    return () => {
+      if (es) es.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
   }, []);
 
   if (!data) {
@@ -140,39 +155,13 @@ export default function AuctionLiveView({ onBid, canBid = false, myTeamId = null
       {/* Team Scorecards */}
       {teams && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1rem" }}>
-          {Object.values(teams).map((team) => {
-            const remaining = team.budget - team.spent;
-            const pct = Math.round((team.spent / team.budget) * 100);
-            const isHighBidder = state.currentBidder === team.id;
-            return (
-              <div key={team.id} className="card" style={{
-                border: isHighBidder ? `2px solid ${team.color}` : "1px solid var(--border)",
-                boxShadow: isHighBidder ? `0 0 20px ${team.color}30` : "none",
-                transition: "all 0.3s",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
-                  <span style={{ fontSize: "1.5rem" }}>{team.logo}</span>
-                  <div>
-                    <div style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: "1rem", fontWeight: 700, color: team.color }}>{team.name}</div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{team.players.length} players</div>
-                  </div>
-                  {isHighBidder && (
-                    <span className="badge badge-gold" style={{ marginLeft: "auto", fontSize: "0.65rem" }}>LEADING</span>
-                  )}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
-                  <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Budget Left</span>
-                  <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--accent-gold)" }}>{formatCurrency(remaining)}</span>
-                </div>
-                <div className="budget-bar">
-                  <div className="budget-bar-fill" style={{ width: `${pct}%`, background: team.color }} />
-                </div>
-                <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
-                  Spent: {formatCurrency(team.spent)} / {formatCurrency(team.budget)}
-                </div>
-              </div>
-            );
-          })}
+          {Object.values(teams).map((team) => (
+            <TeamCard 
+              key={team.id} 
+              team={team} 
+              isHighBidder={state.currentBidder === team.id} 
+            />
+          ))}
         </div>
       )}
 
@@ -266,3 +255,36 @@ function BidButtons({ currentBid, currentBidder, myTeamId, teamBudget, onBid }) 
     </div>
   );
 }
+
+const TeamCard = memo(({ team, isHighBidder }) => {
+  const remaining = team.budget - team.spent;
+  const pct = Math.round((team.spent / team.budget) * 100);
+  return (
+    <div className="card" style={{
+      border: isHighBidder ? `2px solid ${team.color}` : "1px solid var(--border)",
+      boxShadow: isHighBidder ? `0 0 20px ${team.color}30` : "none",
+      transition: "all 0.3s",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+        <span style={{ fontSize: "1.5rem" }}>{team.logo}</span>
+        <div>
+          <div style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: "1rem", fontWeight: 700, color: team.color }}>{team.name}</div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{team.players.length} players</div>
+        </div>
+        {isHighBidder && (
+          <span className="badge badge-gold" style={{ marginLeft: "auto", fontSize: "0.65rem" }}>LEADING</span>
+        )}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+        <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Budget Left</span>
+        <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--accent-gold)" }}>{formatCurrency(remaining)}</span>
+      </div>
+      <div className="budget-bar">
+        <div className="budget-bar-fill" style={{ width: `${pct}%`, background: team.color }} />
+      </div>
+      <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
+        Spent: {formatCurrency(team.spent)} / {formatCurrency(team.budget)}
+      </div>
+    </div>
+  );
+});
