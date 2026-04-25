@@ -24,21 +24,19 @@ export async function POST(request) {
   const getNextPlayerWithRecycle = async (cond) => {
     let player = pickRandomPlayer(players, cond);
     if (!player) {
-      // Immutable recycle: map returns a new array, no direct mutation
-      const recycled = players.some(
+      const needsRecycle = players.some(
         (p) => p.status === "skipped" || p.status === "unsold"
       );
-      if (recycled) {
+      if (needsRecycle) {
+        // Immutable map — no mutation of the outer `players` reference
         const recycledPlayers = players.map((p) =>
           p.status === "skipped" || p.status === "unsold"
             ? { ...p, status: "pending" }
             : p
         );
         await savePlayers(recycledPlayers);
-        // Update local reference for the subsequent pick
-        players.length = 0;
-        recycledPlayers.forEach((p) => players.push(p));
-        player = pickRandomPlayer(players, cond);
+        // Pick directly from the new array — no in-place mutation needed
+        player = pickRandomPlayer(recycledPlayers, cond);
       }
     }
     return player;
