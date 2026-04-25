@@ -17,12 +17,18 @@ const ROLE_MAP = { vipers: "team1", mongooses: "team2" };
 export default function TeamDashClient({ teamId }) {
   const { toasts, addToast } = useToast();
   const [team, setTeam] = useState(null);
+  const [auctionState, setAuctionState] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [passing, setPassing] = useState(false);
 
   const fetchTeam = async () => {
-    const res = await fetch("/api/teams");
-    const data = await res.json();
-    setTeam(data.teams?.[teamId]);
+    const [tRes, aRes] = await Promise.all([
+      fetch("/api/teams"),
+      fetch("/api/auction"),
+    ]);
+    const [tData, aData] = await Promise.all([tRes.json(), aRes.json()]);
+    setTeam(tData.teams?.[teamId]);
+    setAuctionState(aData.state);
     setLoading(false);
   };
 
@@ -39,8 +45,24 @@ export default function TeamDashClient({ teamId }) {
       addToast(data.error || "Bid failed", "error");
     } else {
       addToast(`💰 Bid placed: ${formatCurrency(amount)}`, "success");
-      fetchTeam(); // Refresh budget
+      fetchTeam();
     }
+  };
+
+  const handlePassToOpponent = async () => {
+    const opponent = teamId === "vipers" ? "🦡 Mongooses" : "🐍 Vipers";
+    const price = auctionState?.currentBid || auctionState?.currentPlayer?.basePrice;
+    if (!confirm(`Pass ${auctionState?.currentPlayer?.name} to ${opponent} at ${formatCurrency(price)}?`)) return;
+    setPassing(true);
+    const res = await fetch("/api/auction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "passToOpponent" }),
+    });
+    const data = await res.json();
+    if (!res.ok) addToast(data.error || "Failed", "error");
+    else { addToast("🔄 Player passed to opponent!", "success"); fetchTeam(); }
+    setPassing(false);
   };
 
   if (loading || !team) return (
@@ -112,6 +134,39 @@ export default function TeamDashClient({ teamId }) {
 
           {/* Live Auction */}
           <div>
+            {/* Pass to Opponent button — visible when opponent is winning */}
+            {auctionState?.status === "bidding" &&
+             auctionState?.currentBidder &&
+             auctionState.currentBidder !== teamId && (
+              <div style={{
+                marginBottom: "1rem",
+                padding: "0.85rem 1rem",
+                borderRadius: 10,
+                background: "rgba(249,115,22,0.10)",
+                border: "1px solid rgba(249,115,22,0.45)",
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap",
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "0.88rem", color: "#f97316" }}>
+                    Opponent is highest bidder
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
+                    Pass {auctionState.currentPlayer?.name} to them at {formatCurrency(auctionState.currentBid)}?
+                  </div>
+                </div>
+                <button
+                  className="btn"
+                  style={{
+                    background: "rgba(249,115,22,0.2)", border: "1px solid rgba(249,115,22,0.6)",
+                    color: "#f97316", fontWeight: 700, whiteSpace: "nowrap",
+                  }}
+                  disabled={passing}
+                  onClick={handlePassToOpponent}
+                >
+                  {passing ? "Passing..." : "🔄 Pass to Opponent"}
+                </button>
+              </div>
+            )}
             <AuctionLiveView canBid={true} myTeamId={teamId} onBid={handleBid} />
           </div>
 

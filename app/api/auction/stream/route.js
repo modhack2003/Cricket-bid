@@ -7,14 +7,20 @@ export async function GET() {
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Track last sent payload to skip sending when nothing changed
       let lastHash = null;
+      let closed = false;
+
+      const safeClose = () => {
+        if (closed) return;
+        closed = true;
+        try { controller.close(); } catch {}
+      };
 
       const send = async (force = false) => {
+        if (closed) return;
         try {
           const [state, teams] = await Promise.all([getAuctionState(), getTeams()]);
 
-          // Build a lightweight hash: status + currentBid + bidHistory length + team spends
           const changeKey = JSON.stringify({
             status: state.status,
             currentBid: state.currentBid,
@@ -24,14 +30,19 @@ export async function GET() {
             spends: Object.values(teams).map((t) => t.spent),
           });
 
-          // Only serialize and enqueue the full payload when something changed
           if (force || changeKey !== lastHash) {
             lastHash = changeKey;
-            const data = JSON.stringify({ state, teams, ts: Date.now() });
-            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+            if (!closed) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ state, teams, ts: Date.now() })}\n\n`));
+            }
           }
         } catch {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "stream error" })}\n\n`));
+          // Only attempt to write the error event if the stream is still open
+          if (!closed) {
+            try {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "stream error" })}\n\n`));
+            } catch {}
+          }
         }
       };
 
@@ -40,18 +51,22 @@ export async function GET() {
 
       // Then poll every 1.5 seconds, but only push when state changes
       const interval = setInterval(async () => {
+        if (closed) {
+          clearInterval(interval);
+          return;
+        }
         try {
           await send();
         } catch {
           clearInterval(interval);
-          controller.close();
+          safeClose();
         }
       }, 1500);
 
       // Auto-close after 5 minutes (client reconnects via exponential backoff)
       setTimeout(() => {
         clearInterval(interval);
-        try { controller.close(); } catch {}
+        safeClose();
       }, 5 * 60 * 1000);
     },
   });
@@ -64,4 +79,3 @@ export async function GET() {
     },
   });
 }
-

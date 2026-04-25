@@ -30,6 +30,7 @@ export default function AuctionControlClient() {
     maxPlayersPerTeam: 15,
   });
   const [allPlayers, setAllPlayers] = useState([]);
+  const [teams, setTeams] = useState({});
   const [manualSellTeam, setManualSellTeam] = useState("vipers");
   const [manualSellPrice, setManualSellPrice] = useState("");
 
@@ -44,10 +45,14 @@ export default function AuctionControlClient() {
     if (a.state?.currentBid) setManualSellPrice(a.state.currentBid);
     else if (a.state?.currentPlayer) setManualSellPrice(a.state.currentPlayer.basePrice);
     setAuctionLog(l.log || []);
-    // Also fetch player list for Priority Last selector
-    const pRes = await fetch("/api/players");
-    const pData = await pRes.json();
+    // Fetch player list for Priority Last selector
+    const [pRes, tRes] = await Promise.all([
+      fetch("/api/players"),
+      fetch("/api/teams"),
+    ]);
+    const [pData, tData] = await Promise.all([pRes.json(), tRes.json()]);
     setAllPlayers(pData.players || []);
+    setTeams(tData.teams || {});
     setLoading(false);
   };
 
@@ -70,13 +75,15 @@ export default function AuctionControlClient() {
           start: "🏏 Auction started! Player selected randomly.",
           next: "➡️ Next player selected!",
           sell: "🎉 Player sold!",
+          manualSell: "✅ Player manually assigned!",
+          passToOpponent: "🔄 Player passed to opponent team!",
           unsold: "❌ Player marked as unsold",
           pause: "⏸ Auction paused",
           resume: "▶️ Auction resumed",
           reset: "🔄 Auction reset",
         };
         addToast(msgs[act] || "Done", "success");
-        if (["sell", "unsold"].includes(act)) fetchState();
+        if (["sell", "unsold", "manualSell", "passToOpponent"].includes(act)) fetchState();
       }
     } catch {
       addToast("Network error", "error");
@@ -107,6 +114,13 @@ export default function AuctionControlClient() {
     setShowConditions(false);
   };
 
+  const clearLog = async () => {
+    if (!confirm("Clear all auction activity log entries?")) return;
+    const res = await fetch("/api/auction/log", { method: "DELETE" });
+    if (res.ok) { setAuctionLog([]); addToast("Log cleared", "success"); }
+    else addToast("Failed to clear log", "error");
+  };
+
   const status = auctionState?.status;
   const isIdle = status === "idle" || !status;
   const isBidding = status === "bidding";
@@ -114,6 +128,17 @@ export default function AuctionControlClient() {
   const isSold = status === "sold";
   const isUnsold = status === "unsold";
   const canStart = isIdle || isSold || isUnsold;
+
+  // Check team readiness (manager + captain required before start)
+  const teamReadiness = Object.values(teams).map((t) => ({
+    name: t.name,
+    logo: t.logo,
+    color: t.color,
+    ready: !!t.managerId && !!t.captainId,
+    missingManager: !t.managerId,
+    missingCaptain: !t.captainId,
+  }));
+  const allTeamsReady = teamReadiness.every((t) => t.ready);
 
   return (
     <>
@@ -160,12 +185,36 @@ export default function AuctionControlClient() {
             )}
           </div>
 
+          {/* Team Readiness Warning */}
+          {canStart && !allTeamsReady && (
+            <div style={{
+              background: "rgba(239,68,68,0.10)",
+              border: "1px solid rgba(239,68,68,0.4)",
+              borderRadius: 10,
+              padding: "0.85rem 1rem",
+            }}>
+              <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--accent-red)", marginBottom: "0.4rem" }}>
+                ⚠️ Auction cannot start
+              </div>
+              {teamReadiness.filter(t => !t.ready).map((t) => (
+                <div key={t.name} style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginBottom: "0.2rem" }}>
+                  <span style={{ color: t.color }}>{t.logo} {t.name}</span>
+                  {" — "}
+                  {[t.missingManager && "No Manager", t.missingCaptain && "No Captain"].filter(Boolean).join(" & ")}
+                </div>
+              ))}
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>
+                Teams must set Manager &amp; Captain from their profile page before the auction begins.
+              </div>
+            </div>
+          )}
+
           {/* Main Action Buttons */}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
             {canStart && (
               <button className="btn btn-gold btn-lg" style={{ width: "100%", justifyContent: "center" }}
-                disabled={acting} onClick={() => action(isIdle ? "start" : "next")}>
-                {acting ? "Loading..." : isIdle ? "🚀 Start Auction (Random Player)" : "➡️ Next Player (Random)"}
+                disabled={acting || !allTeamsReady} onClick={() => action(isIdle ? "start" : "next")}>
+                {acting ? "Loading..." : isIdle ? "🚀 Start Auction" : "➡️ Next Player"}
               </button>
             )}
             {(isBidding || isPaused) && (
@@ -185,6 +234,29 @@ export default function AuctionControlClient() {
                 </button>
               </div>
             )}
+            {(isBidding || isPaused) && auctionState?.currentBidder && (() => {
+              const bidder = auctionState.currentBidder;
+              const opponent = bidder === "vipers" ? "mongooses" : "vipers";
+              const opponentLabel = opponent === "vipers" ? "🐍 Vipers" : "🦡 Mongooses";
+              return (
+                <button
+                  className="btn"
+                  style={{
+                    width: "100%", justifyContent: "center",
+                    background: "rgba(249,115,22,0.15)", border: "1px solid rgba(249,115,22,0.5)",
+                    color: "#f97316", fontWeight: 700,
+                  }}
+                  disabled={acting}
+                  onClick={() => {
+                    if (confirm(`Pass player to ${opponentLabel} at ${formatCurrency(auctionState.currentBid)}?`)) {
+                      action("passToOpponent");
+                    }
+                  }}
+                >
+                  🔄 Pass to Opponent ({opponentLabel}) — {formatCurrency(auctionState.currentBid)}
+                </button>
+              );
+            })()}
             {(isBidding || isPaused) && (
               <div style={{ display: "flex", gap: "0.5rem" }}>
                 <button className="btn btn-ghost" style={{ flex: 1, justifyContent: "center", border: "1px solid var(--border)" }}
@@ -320,8 +392,13 @@ export default function AuctionControlClient() {
           {/* Auction Log */}
           {auctionLog.length > 0 && (
             <div>
-              <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: "0.75rem", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                Auction Log
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+                <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  Auction Log
+                </div>
+                <button className="btn btn-ghost btn-sm" style={{ color: "var(--accent-red)", fontSize: "0.72rem" }} onClick={clearLog}>
+                  🗑️ Clear
+                </button>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 {auctionLog.slice(0, 10).map((entry, i) => (

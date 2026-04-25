@@ -40,7 +40,7 @@ export default function PlayersClient() {
   useEffect(() => { fetchPlayers(); }, []);
 
   const filtered = players.filter((p) => {
-    if (filter.role && p.role !== filter.role) return false;
+    if (filter.role && p.role?.toLowerCase() !== filter.role.toLowerCase()) return false;
     if (filter.status && p.status !== filter.status) return false;
     if (filter.search && !p.name.toLowerCase().includes(filter.search.toLowerCase())) return false;
     return true;
@@ -242,7 +242,7 @@ export default function PlayersClient() {
           />
           <select className="select" style={{ minWidth: 140 }} value={filter.role} onChange={(e) => setFilter({ ...filter, role: e.target.value })}>
             <option value="">All Roles</option>
-            {ROLES.map((r) => <option key={r}>{r}</option>)}
+            {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
           <select className="select" style={{ minWidth: 140 }} value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })}>
             <option value="">All Status</option>

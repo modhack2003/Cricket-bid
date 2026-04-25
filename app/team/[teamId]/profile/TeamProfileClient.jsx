@@ -113,21 +113,45 @@ export default function TeamProfileClient({ teamId }) {
                   {team.name}
                 </div>
                 {editing ? (
-                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
                     <div>
-                      <label style={{ fontSize: "0.72rem" }}>Manager</label>
-                      <select className="select" value={form.managerId || ""} onChange={(e) => setForm({ ...form, managerId: e.target.value })} style={{ padding: "0.4rem 0.7rem", maxWidth: 160 }}>
+                      <label style={{ fontSize: "0.72rem" }}>Manager <span style={{ color: "var(--accent-green)", fontWeight: 600 }}>(₹0)</span></label>
+                      <select className="select" value={form.managerId || ""} onChange={(e) => setForm({ ...form, managerId: e.target.value })} style={{ padding: "0.4rem 0.7rem", maxWidth: 180 }}>
                         <option value="">None</option>
-                        {team.managerId && <option value={team.managerId}>{team.players.find(p => p.id === team.managerId)?.name} (Current)</option>}
-                        {availablePlayers.map(p => <option key={p.id} value={p.id} disabled={p.id === form.captainId}>{p.name} ({formatCurrency(p.basePrice)})</option>)}
+                        {/* Show current if already set */}
+                        {team.managerId && (
+                          <option value={team.managerId}>
+                            {(team.players.find(p => p.id === team.managerId) || availablePlayers.find(p => p.id === team.managerId))?.name} (Current)
+                          </option>
+                        )}
+                        {/* All pending players except already-current */}
+                        {availablePlayers
+                          .filter(p => p.id !== team.managerId)
+                          .map(p => (
+                            <option key={p.id} value={p.id} disabled={p.id === form.captainId}>
+                              {p.name} — {p.role}{p.id === form.captainId ? " (Captain)" : ""}
+                            </option>
+                          ))}
                       </select>
                     </div>
                     <div>
-                      <label style={{ fontSize: "0.72rem" }}>Captain</label>
-                      <select className="select" value={form.captainId || ""} onChange={(e) => setForm({ ...form, captainId: e.target.value })} style={{ padding: "0.4rem 0.7rem", maxWidth: 160 }}>
+                      <label style={{ fontSize: "0.72rem" }}>Captain <span style={{ color: "var(--accent-green)", fontWeight: 600 }}>(₹0)</span></label>
+                      <select className="select" value={form.captainId || ""} onChange={(e) => setForm({ ...form, captainId: e.target.value })} style={{ padding: "0.4rem 0.7rem", maxWidth: 180 }}>
                         <option value="">None</option>
-                        {team.captainId && <option value={team.captainId}>{team.players.find(p => p.id === team.captainId)?.name} (Current)</option>}
-                        {availablePlayers.map(p => <option key={p.id} value={p.id} disabled={p.id === form.managerId}>{p.name} ({formatCurrency(p.basePrice)})</option>)}
+                        {/* Show current if already set */}
+                        {team.captainId && (
+                          <option value={team.captainId}>
+                            {(team.players.find(p => p.id === team.captainId) || availablePlayers.find(p => p.id === team.captainId))?.name} (Current)
+                          </option>
+                        )}
+                        {/* All pending players except already-current */}
+                        {availablePlayers
+                          .filter(p => p.id !== team.captainId)
+                          .map(p => (
+                            <option key={p.id} value={p.id} disabled={p.id === form.managerId}>
+                              {p.name} — {p.role}{p.id === form.managerId ? " (Manager)" : ""}
+                            </option>
+                          ))}
                       </select>
                     </div>
                     <div>

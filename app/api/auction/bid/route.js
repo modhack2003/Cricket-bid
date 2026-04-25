@@ -4,12 +4,14 @@ import { getAuctionState, saveAuctionState, getTeams } from "@/lib/auction";
 
 export async function POST(request) {
   const session = await getSession();
-  if (!session || (session.role !== "team1" && session.role !== "team2")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Allow team1, team2, and admin sessions (admin useful for testing)
+  if (!session || (session.role !== "team1" && session.role !== "team2" && session.role !== "admin")) {
+    return NextResponse.json({ error: "Unauthorized — please log in as a team" }, { status: 401 });
   }
 
-  const { amount } = await request.json();
-  const teamId = session.teamId; // vipers or mongooses
+  const { amount, teamId: bodyTeamId } = await request.json();
+  // Team sessions use their own teamId; admin can pass teamId in body
+  const teamId = session.role === "admin" ? bodyTeamId : session.teamId;
 
   const state = await getAuctionState();
   if (state.status !== "bidding") {

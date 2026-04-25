@@ -45,7 +45,8 @@ export default function AdminDashboardClient() {
 
   const stats = {
     total: players.length,
-    pending: players.filter((p) => p.status === "pending").length,
+    // skipped players re-enter the pool, so count them alongside pending
+    pending: players.filter((p) => p.status === "pending" || p.status === "skipped").length,
     sold: players.filter((p) => p.status === "sold").length,
     unsold: players.filter((p) => p.status === "unsold").length,
     temp: players.filter((p) => p.isTemp).length,
@@ -143,7 +144,11 @@ export default function AdminDashboardClient() {
                     <div style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: "1.2rem", fontWeight: 700, color: team.color }}>
                       {team.name}
                     </div>
-                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Manager: {team.manager}</div>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                      👔 {team.managerId ? (team.players.find(p => p.id === team.managerId)?.name || "Manager set") : "No Manager"}
+                      {" · "}
+                      ⭐ {team.captainId ? (team.players.find(p => p.id === team.captainId)?.name || "Captain set") : "No Captain"}
+                    </div>
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1rem" }}>
@@ -162,44 +167,75 @@ export default function AdminDashboardClient() {
         </div>
 
         {/* Recent Auction Log */}
-        {auctionLog.length > 0 && (
-          <>
-            <h2 style={{ marginBottom: "1rem", fontSize: "1.1rem", color: "var(--text-secondary)", fontFamily: "Inter" }}>
-              Recent Auction Activity
-            </h2>
-            <div className="card">
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-                {auctionLog.slice(0, 5).map((entry, i) => (
-                  <div key={i} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "0.65rem 0.75rem", borderRadius: "8px", background: "var(--bg-secondary)",
-                    flexWrap: "wrap", gap: "0.5rem",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                      <span>{entry.type === "sold" ? "🎉" : "❌"}</span>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{entry.player?.name}</div>
-                        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{entry.player?.role}</div>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      {entry.type === "sold" ? (
-                        <div style={{ color: "var(--accent-green)", fontWeight: 700 }}>
-                          {formatCurrency(entry.soldFor)} → {entry.soldTo === "vipers" ? "🐍" : "🦡"}
+        {auctionLog.length > 0 && (() => {
+          // Filter to only meaningful sold/unsold/skipped entries (exclude zero-cost pre-assigns)
+          const meaningful = auctionLog.filter(e =>
+            e.type === "sold" ? e.soldFor > 0 : true
+          );
+          if (meaningful.length === 0) return null;
+
+          const teamName = (id) => id === "vipers" ? "🐍 Vipers" : id === "mongooses" ? "🦡 Mongooses" : id;
+          const relTime = (ts) => {
+            if (!ts) return "";
+            const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
+            if (diff < 60) return `${diff}s ago`;
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          };
+          const entryIcon = (e) => e.type === "sold" ? "🎉" : e.type === "skipped" ? "⏭️" : "❌";
+          const entryLabel = (e) => e.type === "sold" ? "Sold" : e.type === "skipped" ? "Skipped" : "Unsold";
+          const entryColor = (e) => e.type === "sold" ? "var(--accent-green)" : "var(--accent-red)";
+
+          return (
+            <>
+              <h2 style={{ marginBottom: "1rem", fontSize: "1.1rem", color: "var(--text-secondary)", fontFamily: "Inter" }}>
+                Recent Auction Activity
+              </h2>
+              <div className="card">
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {meaningful.slice(0, 8).map((entry, i) => (
+                    <div key={i} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "0.6rem 0.75rem", borderRadius: "8px", background: "var(--bg-secondary)",
+                      flexWrap: "wrap", gap: "0.5rem",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <span style={{ fontSize: "1.1rem" }}>{entryIcon(entry)}</span>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                            {entry.player?.name || "Unknown Player"}
+                          </div>
+                          <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                            {entry.player?.role}{entry.player?.role && " · "}{relTime(entry.ts)}
+                          </div>
                         </div>
-                      ) : (
-                        <span className="badge badge-red">Unsold</span>
-                      )}
-                      <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                        {new Date(entry.ts).toLocaleTimeString()}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        {entry.type === "sold" ? (
+                          <>
+                            <div style={{ color: entryColor(entry), fontWeight: 700, fontSize: "0.9rem" }}>
+                              {formatCurrency(entry.soldFor)}
+                            </div>
+                            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                              → {teamName(entry.soldTo)}
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{
+                            fontSize: "0.72rem", fontWeight: 700, padding: "0.2rem 0.5rem",
+                            borderRadius: 4, background: "rgba(239,68,68,0.12)", color: "var(--accent-red)",
+                          }}>
+                            {entryLabel(entry)}
+                          </span>
+                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          </>
-        )}
+            </>
+          );
+        })()}
       </div>
     </>
   );

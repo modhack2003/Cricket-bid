@@ -41,7 +41,12 @@ export async function PUT(request) {
     const allowedFields = ["logo", "color", "managerId", "captainId"];
     const updates = {};
     for (const f of allowedFields) {
-      if (body[f] !== undefined) updates[f] = body[f];
+      if (body[f] !== undefined) {
+        // Normalize empty string to null for managerId / captainId
+        updates[f] = (f === "managerId" || f === "captainId") && body[f] === ""
+          ? null
+          : body[f];
+      }
     }
     
     // Handle manager/captain logic
@@ -80,13 +85,17 @@ export async function PUT(request) {
       // Acquire players
       for (const id of acquireIds) {
         const pIdx = players.findIndex(p => p.id === id);
-        if (pIdx !== -1 && players[pIdx].status === "pending") {
-          const price = 0; // Free cost
-          spentDelta += price;
-          players[pIdx] = { ...players[pIdx], status: "sold", soldTo: teamId, soldFor: price };
+        if (pIdx === -1) continue;
+
+        const p = players[pIdx];
+        if (p.status === "pending") {
+          // New player from the free pool
+          players[pIdx] = { ...p, status: "sold", soldTo: teamId, soldFor: 0 };
           currentTeam.players.push({ ...players[pIdx] });
-        } else if (pIdx !== -1 && players[pIdx].status !== "pending") {
-          return NextResponse.json({ error: "One or more selected players are no longer available" }, { status: 400 });
+        } else if (p.status === "sold" && p.soldTo === teamId) {
+          // Player already on this team's squad — just updating the role, no cost
+        } else {
+          return NextResponse.json({ error: "One or more selected players are not available" }, { status: 400 });
         }
       }
       

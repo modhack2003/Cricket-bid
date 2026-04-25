@@ -14,10 +14,22 @@ export async function GET() {
 }
 
 export async function POST(request) {
-  const auth = await requireAuth(["admin"]);
-  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const { action, conditions, timer, teamId, price } = await request.json();
+
+  // These actions can be called by team sessions; all others require admin
+  const publicActions = ["bid", "passToOpponent"];
+  if (!publicActions.includes(action)) {
+    const auth = await requireAuth(["admin"]);
+    if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } else if (action === "passToOpponent") {
+    // passToOpponent requires at least a valid team or admin session
+    const { getSession } = await import("@/lib/auth");
+    const session = await getSession();
+    if (!session || (session.role !== "team1" && session.role !== "team2" && session.role !== "admin")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   const state = await getAuctionState();
   const players = await getPlayers();
 
@@ -43,6 +55,25 @@ export async function POST(request) {
   };
 
   if (action === "start") {
+    // Require both teams to have assigned manager and captain before auction can start
+    const teams = await getTeams();
+    const teamChecks = Object.values(teams).map((t) => ({
+      name: t.name,
+      missingManager: !t.managerId,
+      missingCaptain: !t.captainId,
+    }));
+    const incomplete = teamChecks.filter(t => t.missingManager || t.missingCaptain);
+    if (incomplete.length > 0) {
+      const detail = incomplete.map(t => {
+        const missing = [t.missingManager && "Manager", t.missingCaptain && "Captain"].filter(Boolean).join(" & ");
+        return `${t.name}: ${missing} not assigned`;
+      }).join(" | ");
+      return NextResponse.json(
+        { error: `Cannot start auction — ${detail}. Both teams must assign Manager & Captain first.` },
+        { status: 400 }
+      );
+    }
+
     // Pick random player based on conditions
     const cond = conditions || state.conditions;
     const player = await getNextPlayerWithRecycle(cond);
@@ -129,6 +160,50 @@ export async function POST(request) {
       status: "sold",
       currentBidder: teamId,
       currentBid: price,
+      timerActive: false,
+    };
+    await saveAuctionState(newState);
+    return NextResponse.json({ state: newState });
+  }
+
+  if (action === "passToOpponent") {
+    if (!state.currentPlayer) return NextResponse.json({ error: "No active player" }, { status: 400 });
+
+    // Sell to the team that is NOT the current highest bidder
+    const bidder = state.currentBidder;
+    const opponentId = bidder === "vipers" ? "mongooses" : bidder === "mongooses" ? "vipers" : "vipers";
+    const sellPrice = state.currentBid || state.currentPlayer.basePrice;
+
+    const updatedPlayers = players.map((p) =>
+      p.id === state.currentPlayer.id
+        ? { ...p, status: "sold", soldTo: opponentId, soldFor: sellPrice }
+        : p
+    );
+    await savePlayers(updatedPlayers);
+
+    const teams = await getTeams();
+    if (teams[opponentId]) {
+      teams[opponentId] = {
+        ...teams[opponentId],
+        players: [...teams[opponentId].players, { ...state.currentPlayer, soldFor: sellPrice }],
+        spent: teams[opponentId].spent + sellPrice,
+      };
+    }
+    await saveTeams(teams);
+
+    await appendAuctionLog({
+      type: "sold",
+      player: state.currentPlayer,
+      soldTo: opponentId,
+      soldFor: sellPrice,
+      note: "passed to opponent",
+    });
+
+    const newState = {
+      ...state,
+      status: "sold",
+      currentBidder: opponentId,
+      currentBid: sellPrice,
       timerActive: false,
     };
     await saveAuctionState(newState);
